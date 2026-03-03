@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Datarista — Em Breve</title>
+<link href="https://fonts.googleapis.com/css2?family=Nunito:wght@300;400;600&display=swap" rel="stylesheet">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  background: #1e2530;
+  min-height: 100vh;
+  overflow: hidden;
+  font-family: 'Nunito', system-ui, sans-serif;
+}
+
+canvas {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+}
+
+.center {
+  position: relative;
+  z-index: 10;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 26px;
+  padding: 40px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.logo {
+  width: 260px;
+  max-width: 75vw;
+  opacity: 0;
+  animation: fadeUp .9s ease .2s forwards;
+  filter: drop-shadow(0 0 32px rgba(0,180,216,.18));
+}
+
+.slogan {
+  font-size: 15px;
+  font-weight: 400;
+  color: #6a8090;
+  letter-spacing: .07em;
+  opacity: 0;
+  animation: fadeUp .9s ease .45s forwards;
+}
+
+.badge {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .24em;
+  text-transform: uppercase;
+  color: #00b4d8;
+  border: 1px solid rgba(0,180,216,.3);
+  background: rgba(0,180,216,.07);
+  padding: 8px 22px;
+  border-radius: 20px;
+  opacity: 0;
+  animation: fadeUp .9s ease .7s forwards;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(18px); }
+  to   { opacity: 1; transform: none; }
+}
+</style>
+</head>
+<body>
+
+<canvas id="c"></canvas>
+
+<div class="center">
+  <img src="logo.png" alt="Datarista" class="logo">
+  <p class="slogan">Feito com cuidado para quem cuida dos dados.</p>
+  <span class="badge">Em Breve</span>
+</div>
+
+<script>
+const canvas = document.getElementById("c");
+const ctx    = canvas.getContext("2d");
+
+const CYAN       = "0,180,216";
+const BG         = "#1e2530";
+const NUM_POINTS = 90;       // quantidade de nós
+const MOUSE_DIST = 160;      // distância que o mouse ativa conexões
+const MAX_DIST   = 130;      // distância máxima entre nós para conectar
+const POINT_R    = 2.2;      // raio dos nós
+const SPEED      = 0.45;     // velocidade dos nós
+
+let W, H, mouse = { x: -999, y: -999 };
+let points = [];
+
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+
+function createPoints() {
+  points = [];
+  for (let i = 0; i < NUM_POINTS; i++) {
+    points.push({
+      x:  Math.random() * W,
+      y:  Math.random() * H,
+      vx: (Math.random() - .5) * SPEED,
+      vy: (Math.random() - .5) * SPEED,
+      r:  POINT_R + Math.random() * 1.2,
+      pulse: Math.random() * Math.PI * 2,   // fase individual
+    });
+  }
+}
+
+function dist(a, b) {
+  const dx = a.x - b.x, dy = a.y - b.y;
+  return Math.sqrt(dx*dx + dy*dy);
+}
+
+function lerp(a, b, t) { return a + (b - a) * t; }
+
+let frame = 0;
+
+function draw() {
+  frame++;
+  ctx.fillStyle = BG;
+  ctx.fillRect(0, 0, W, H);
+
+  // Mover pontos
+  for (const p of points) {
+    p.x += p.vx;
+    p.y += p.vy;
+    if (p.x < 0 || p.x > W) p.vx *= -1;
+    if (p.y < 0 || p.y > H) p.vy *= -1;
+    p.pulse += 0.018;
+  }
+
+  // Conexões entre pontos
+  for (let i = 0; i < points.length; i++) {
+    for (let j = i + 1; j < points.length; j++) {
+      const a = points[i], b = points[j];
+      const d = dist(a, b);
+      if (d > MAX_DIST) continue;
+
+      const dMouseA = dist(mouse, a);
+      const dMouseB = dist(mouse, b);
+      const nearMouse = dMouseA < MOUSE_DIST || dMouseB < MOUSE_DIST;
+
+      // opacidade base pela distância entre nós
+      let alpha = (1 - d / MAX_DIST) * 0.12;
+
+      // boost quando mouse está perto
+      if (nearMouse) {
+        const closest = Math.min(dMouseA, dMouseB);
+        const boost   = (1 - closest / MOUSE_DIST);
+        alpha = lerp(alpha, 0.75, boost * boost);
+      }
+
+      if (alpha < 0.01) continue;
+
+      // Gradiente na linha
+      const grad = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+      grad.addColorStop(0, `rgba(${CYAN},${alpha * (nearMouse ? 1 : 0.7)})`);
+      grad.addColorStop(1, `rgba(${CYAN},${alpha * (nearMouse ? 1 : 0.7)})`);
+
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.strokeStyle = grad;
+      ctx.lineWidth   = nearMouse ? lerp(0.5, 1.4, (1 - Math.min(dMouseA, dMouseB) / MOUSE_DIST)) : 0.5;
+      ctx.stroke();
+    }
+  }
+
+  // Conexões mouse → pontos mais próximos
+  const sorted = points
+    .map(p => ({ p, d: dist(mouse, p) }))
+    .filter(({ d }) => d < MOUSE_DIST)
+    .sort((a, b) => a.d - b.d)
+    .slice(0, 7);
+
+  for (const { p, d } of sorted) {
+    const alpha = (1 - d / MOUSE_DIST) * 0.9;
+    ctx.beginPath();
+    ctx.moveTo(mouse.x, mouse.y);
+    ctx.lineTo(p.x, p.y);
+    ctx.strokeStyle = `rgba(${CYAN},${alpha})`;
+    ctx.lineWidth   = (1 - d / MOUSE_DIST) * 1.8;
+    ctx.stroke();
+  }
+
+  // Desenhar nós
+  for (const p of points) {
+    const dMouse  = dist(mouse, p);
+    const active  = dMouse < MOUSE_DIST;
+    const pulse   = (Math.sin(p.pulse) + 1) / 2;   // 0–1
+    const baseAlpha = active
+      ? lerp(0.5, 1.0, (1 - dMouse / MOUSE_DIST))
+      : lerp(0.15, 0.35, pulse);
+    const radius = active
+      ? lerp(p.r, p.r * 2.2, (1 - dMouse / MOUSE_DIST) * pulse)
+      : p.r * lerp(0.8, 1.0, pulse);
+
+    // Halo
+    if (active) {
+      const haloAlpha = (1 - dMouse / MOUSE_DIST) * 0.18 * pulse;
+      const halo = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, radius * 5);
+      halo.addColorStop(0, `rgba(${CYAN},${haloAlpha})`);
+      halo.addColorStop(1, `rgba(${CYAN},0)`);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, radius * 5, 0, Math.PI * 2);
+      ctx.fillStyle = halo;
+      ctx.fill();
+    }
+
+    // Ponto
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${CYAN},${baseAlpha})`;
+    ctx.fill();
+  }
+
+  // Cursor pulsante
+  if (mouse.x > 0) {
+    const cp = (Math.sin(frame * 0.06) + 1) / 2;
+    const cr = lerp(4, 8, cp);
+    const ca = lerp(0.3, 0.7, cp);
+    ctx.beginPath();
+    ctx.arc(mouse.x, mouse.y, cr, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${CYAN},${ca})`;
+    ctx.fill();
+    ctx.beginPath();
+    ctx.arc(mouse.x, mouse.y, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(${CYAN},0.95)`;
+    ctx.fill();
+  }
+
+  requestAnimationFrame(draw);
+}
+
+// Touch support
+function setMouse(x, y) { mouse.x = x; mouse.y = y; }
+window.addEventListener("mousemove", e => setMouse(e.clientX, e.clientY));
+window.addEventListener("touchmove", e => {
+  e.preventDefault();
+  setMouse(e.touches[0].clientX, e.touches[0].clientY);
+}, { passive: false });
+window.addEventListener("mouseleave", () => { mouse.x = -999; mouse.y = -999; });
+
+window.addEventListener("resize", () => { resize(); });
+
+resize();
+createPoints();
+draw();
+</script>
+</body>
+</html>
